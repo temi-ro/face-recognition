@@ -3,6 +3,8 @@ import face_recognition
 import pickle
 import collections
 from PIL import Image, ImageDraw, ImageFont
+import cv2
+import numpy as np
 
 DEFAULT_ENCODINGS_FILE = Path("output/encodings.pickle")
 BOUNDING_BOX_COLOR = "blue"
@@ -63,6 +65,55 @@ def validate(model = "hog"):
         print(f"Validating {filepath}")
         recognize_faces(str(filepath), model)
 
+def recognize_faces_video(video_path=None, model = "hog", encodings_location = DEFAULT_ENCODINGS_FILE):
+    with encodings_location.open(mode="rb") as f:
+        loaded_encodings = pickle.load(f)
+
+    # If video_path is None, it will use the webcam
+    if video_path is None:
+        video_path = 0
+
+    cap = cv2.VideoCapture(video_path)
+    pause = False
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        if pause:
+            key = cv2.waitKey(0)
+            if key == ord('q'):
+                break
+            elif key == 32: # Space bar
+                pause = False
+
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        face_locations = face_recognition.face_locations(frame, model=model)
+        face_encodings = face_recognition.face_encodings(frame, face_locations)
+
+        pillow_img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(pillow_img)
+
+        for bb, unknown_encoding in zip(face_locations, face_encodings):
+            name, probability = _recognize_face(unknown_encoding, loaded_encodings)
+            _display_faces(draw, bb, name, probability)
+
+        del draw
+        frame = cv2.cvtColor(np.array(pillow_img), cv2.COLOR_RGB2BGR)
+        cv2.imshow("frame", frame)
+
+        key = cv2.waitKey(1)
+        if key == ord("q"):
+            break
+        elif key == 32: # Space bar
+            pause = not pause
+
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
 def _recognize_face(unknown_encoding, loaded_encodings):
     known_encodings = loaded_encodings["encodings"]
     names = loaded_encodings["names"]
@@ -74,8 +125,8 @@ def _recognize_face(unknown_encoding, loaded_encodings):
             votes[name] += 1
             total_votes += 1
 
-    if votes:
-        print(f"Most votes: {max(votes, key=votes.get)} with {votes[max(votes, key=votes.get)]} votes")
+    if votes and total_votes > 2:
+        print(f"Most votes: {max(votes, key=votes.get)} with {votes[max(votes, key=votes.get)]} votes out of {total_votes}")
         return max(votes, key=votes.get), votes[max(votes, key=votes.get)] / total_votes
 
     # Unknown face (should return None?)
@@ -106,9 +157,14 @@ def _display_faces(draw, bounding_box, name, probability):
     draw.rectangle(((right-rect_length, bottom), (right, text_bottom)), fill=BOUNDING_BOX_COLOR, outline=BOUNDING_BOX_COLOR)
     draw.text((right-rect_length, bottom), f"{probability:.2f}", fill=TEXT_COLOR, font=font, align="right")
 
+
 if __name__ == "__main__":
     # encode_known_faces()
     # recognize_faces("validation/elon_musk/161856.jpg")
-    # recognize_faces("validation/elon_musk/161850.jpeg")
+    # recognize_faces("validation/temi/20230920_102357976_iOS.jpg") 
+    # recognize_faces("training/temi/20240121_173037745_iOS.jpg") # Funny case (emoji as temi)
+    # recognize_faces("validation/temi/Snapchat-1128792590.jpg")
     # recognize_faces("validation/unknown/ambroise.jpg")
-    validate()
+    # validate()
+    recognize_faces_video()
+    
