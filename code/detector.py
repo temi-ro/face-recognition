@@ -5,6 +5,8 @@ import collections
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 import numpy as np
+from sklearn.neighbors import KDTree
+import time
 
 DEFAULT_ENCODINGS_FILE = Path("output/encodings.pickle")
 BOUNDING_BOX_COLOR = "blue"
@@ -41,8 +43,8 @@ def recognize_faces(image_path, model = "hog", encodings_location = DEFAULT_ENCO
 
     input_img = face_recognition.load_image_file(image_path)
 
-    face_locations = face_recognition.face_locations(input_img, model=model)
-    face_encodings = face_recognition.face_encodings(input_img, face_locations)
+    face_locations = np.array(face_recognition.face_locations(input_img, model=model))
+    face_encodings = np.array(face_recognition.face_encodings(input_img, face_locations))
 
     pillow_img = Image.fromarray(input_img)
     draw = ImageDraw.Draw(pillow_img)
@@ -70,11 +72,16 @@ def recognize_faces_video(video_path=None, model = "hog", encodings_location = D
         loaded_encodings = pickle.load(f)
 
     # If video_path is None, it will use the webcam
+    flipped = False
     if video_path is None:
         video_path = 0
+        flipped = True
 
     cap = cv2.VideoCapture(video_path)
     pause = False
+    start = time.time()
+    idx = 0
+    old_name, old_probability = "Unknown", -1
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -88,16 +95,28 @@ def recognize_faces_video(video_path=None, model = "hog", encodings_location = D
                 pause = False
 
 
+        # Time
+        print(f"Frame time: {time.time() - start}")
+
+        if flipped:
+            frame = cv2.flip(frame, 1)
+
+        start = time.time()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_locations = face_recognition.face_locations(frame, model=model)
         face_encodings = face_recognition.face_encodings(frame, face_locations)
 
+
         pillow_img = Image.fromarray(frame)
         draw = ImageDraw.Draw(pillow_img)
-
+        
         for bb, unknown_encoding in zip(face_locations, face_encodings):
-            name, probability = _recognize_face(unknown_encoding, loaded_encodings)
-            _display_faces(draw, bb, name, probability)
+            # Only recognize the face every 10 frames
+            if idx % 10 == 0:
+                name, probability = _recognize_face(unknown_encoding, loaded_encodings)
+                old_name, old_probability = name, probability
+
+            _display_faces(draw, bb, old_name, old_probability)
 
         del draw
         frame = cv2.cvtColor(np.array(pillow_img), cv2.COLOR_RGB2BGR)
@@ -109,6 +128,7 @@ def recognize_faces_video(video_path=None, model = "hog", encodings_location = D
         elif key == 32: # Space bar
             pause = not pause
 
+        idx += 1
 
     cap.release()
     cv2.destroyAllWindows()
@@ -119,11 +139,28 @@ def _recognize_face(unknown_encoding, loaded_encodings):
     names = loaded_encodings["names"]
     votes = collections.defaultdict(int)
     total_votes = 0
-    for known_encoding, name in zip(known_encodings, names):
-        # Compares the face encoding of the unknown face with the known faces
-        if face_recognition.compare_faces([known_encoding], unknown_encoding)[0]:
-            votes[name] += 1
+    # Compares the face encoding of the unknown face with the known faces
+
+    # KNN 
+    tree = KDTree(known_encodings)
+    distances, indices = tree.query([unknown_encoding], k=10)
+    print(f"Distances: {distances}")
+    for i, index in enumerate(indices[0]):
+        if distances[0][i] > 0.6:
+            votes["Unknown"] += 1
             total_votes += 1
+        else:
+            votes[names[index]] += 1
+            total_votes += 1
+        
+    # Vote
+    # for known_encoding, name in zip(known_encodings, names):
+    #     # Compares the face encoding of the unknown face with the known faces
+    #     if face_recognition.compare_faces([known_encoding], unknown_encoding)[0]:
+    #         votes[name] += 1
+    #         total_votes += 1
+
+
 
     if votes and total_votes > 2:
         print(f"Most votes: {max(votes, key=votes.get)} with {votes[max(votes, key=votes.get)]} votes out of {total_votes}")
@@ -149,7 +186,7 @@ def _display_faces(draw, bounding_box, name, probability):
     draw.text((left, bottom), name, fill=TEXT_COLOR, font=font)
 
     # In case of unknown face, don't display the probability
-    if probability == -1:
+    if name == "Unknown":
         return
     
     # Draw a rectange to put the probability in
@@ -163,7 +200,8 @@ if __name__ == "__main__":
     # recognize_faces("validation/elon_musk/161856.jpg")
     # recognize_faces("validation/temi/20230920_102357976_iOS.jpg") 
     # recognize_faces("training/temi/20240121_173037745_iOS.jpg") # Funny case (emoji as temi)
-    # recognize_faces("validation/temi/Snapchat-1128792590.jpg")
+    # recognize_faces("validation/temi/IMG-20200706-WA0048.jpg")
+    # recognize_faces("validation/elon_musk/161889.jpg")
     # recognize_faces("validation/unknown/ambroise.jpg")
     # validate()
     recognize_faces_video()
