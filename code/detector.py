@@ -198,15 +198,15 @@ def _display_faces(draw, bounding_box, name, probability):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--video", help="Path to the video file, default=webcam", default="")
-    parser.add_argument("--image", help="Path to the image file", default="")
-    parser.add_argument("--model", help="Model to use for face detection (hog or cnn)", default="hog")
+    parser.add_argument("--video", help="Path to the video file", default=None)
+    parser.add_argument("--image", help="Path to the image file", default=None)
+    parser.add_argument("--model", help="Model to use for face detection (hog or cnn), default=hog", default="hog")
     parser.add_argument("--encodings", help="Path to the encodings file (.pickle)", default=DEFAULT_ENCODINGS_FILE)
-    parser.add_argument("--train", help="Train the model", action="store_true")
-    parser.add_argument("--validate", help="Validate the model", action="store_true")
+    parser.add_argument("--train", help="Train the model (from the folder 'training')", action="store_true")
+    parser.add_argument("--validate", help="Validate the model (from the folder 'validation')", action="store_true")
 
     args = parser.parse_args()
-    
+    print(args)
     if args.train: 
         encode_known_faces(model=args.model, encodings_location=args.encodings)
     elif args.validate:
@@ -214,5 +214,5 @@ if __name__ == "__main__":
     else:
         if args.image:
             recognize_faces(image_path=args.image, model=args.model, encodings_location=args.encodings)
-        elif args.video:
+        else:
             recognize_faces_video(video_path=args.video, model=args.model, encodings_location=args.encodings)
