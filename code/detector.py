@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from sklearn.neighbors import KDTree
 import time
+import argparse
 
 DEFAULT_ENCODINGS_FILE = Path("output/encodings.pickle")
 BOUNDING_BOX_COLOR = "blue"
@@ -40,7 +41,7 @@ def encode_known_faces(model = "hog", encodings_location = DEFAULT_ENCODINGS_FIL
 def recognize_faces(image_path, model = "hog", encodings_location = DEFAULT_ENCODINGS_FILE):
     with encodings_location.open(mode="rb") as f:
         loaded_encodings = pickle.load(f)
-
+      
     input_img = face_recognition.load_image_file(image_path)
 
     face_locations = np.array(face_recognition.face_locations(input_img, model=model))
@@ -196,13 +197,22 @@ def _display_faces(draw, bounding_box, name, probability):
 
 
 if __name__ == "__main__":
-    # encode_known_faces()
-    # recognize_faces("validation/elon_musk/161856.jpg")
-    # recognize_faces("validation/temi/20230920_102357976_iOS.jpg") 
-    # recognize_faces("training/temi/20240121_173037745_iOS.jpg") # Funny case (emoji as temi)
-    # recognize_faces("validation/temi/IMG-20200706-WA0048.jpg")
-    # recognize_faces("validation/elon_musk/161889.jpg")
-    # recognize_faces("validation/unknown/ambroise.jpg")
-    # validate()
-    recognize_faces_video()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video", help="Path to the video file, default=webcam", default="")
+    parser.add_argument("--image", help="Path to the image file", default="")
+    parser.add_argument("--model", help="Model to use for face detection (hog or cnn)", default="hog")
+    parser.add_argument("--encodings", help="Path to the encodings file (.pickle)", default=DEFAULT_ENCODINGS_FILE)
+    parser.add_argument("--train", help="Train the model", action="store_true")
+    parser.add_argument("--validate", help="Validate the model", action="store_true")
+
+    args = parser.parse_args()
     
+    if args.train: 
+        encode_known_faces(model=args.model, encodings_location=args.encodings)
+    elif args.validate:
+        validate(model=args.model)
+    else:
+        if args.image:
+            recognize_faces(image_path=args.image, model=args.model, encodings_location=args.encodings)
+        elif args.video:
+            recognize_faces_video(video_path=args.video, model=args.model, encodings_location=args.encodings)
